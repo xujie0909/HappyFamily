@@ -1,0 +1,9 @@
+# Claude Code
+.claude/
+
+# Backend
+backend/node_modules/
+backend/.env
+
+# Flutter build artifacts (covered by app/.gitignore but just in case)
+happyfamily_app/build/
