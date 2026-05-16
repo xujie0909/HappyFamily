@@ -1,7 +1,7 @@
 class AppConstants {
   // Change to your server IP/domain in production
-  static const String baseUrl = 'https://setup-extortion-morse.ngrok-free.dev/api';
-  static const String socketUrl = 'https://setup-extortion-morse.ngrok-free.dev';
+  static const String baseUrl = 'http://10.0.2.2:3000/api';
+  static const String socketUrl = 'http://10.0.2.2:3000';
 
   static const String amapAndroidKey = '66abd2c63b7fce84b61c4de51370ad03';
   static const String amapIosKey = 'YOUR_AMAP_IOS_KEY';
