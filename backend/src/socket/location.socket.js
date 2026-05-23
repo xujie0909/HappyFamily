@@ -1,6 +1,11 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Location = require('../models/Location');
+const FamilyMessage = require('../models/FamilyMessage');
+const { haversineDistance, formatDuration } = require('../utils/geo');
+const { reverseGeocode } = require('../utils/amap');
+
+const MOVE_THRESHOLD_METERS = 100;
 
 // socketId -> userId mapping
 const socketUserMap = new Map();
@@ -47,6 +52,7 @@ module.exports = (io) => {
         accuracy: loc.accuracy,
         address: loc.address,
         updatedAt: loc.updatedAt,
+        stayStartTime: loc.stayStartTime,
       })));
     }
 
@@ -55,6 +61,63 @@ module.exports = (io) => {
       const { latitude, longitude, speed, heading, accuracy, address } = data;
       if (latitude == null || longitude == null) return;
       if (!user.familyId) return;
+
+      const now = new Date();
+      const roomId = `family:${user.familyId}`;
+
+      // Load existing location record (with anchor info)
+      const existing = await Location.findOne({ userId: user._id });
+
+      let stayStartTime = now;
+      let newAnchorLat = latitude;
+      let newAnchorLng = longitude;
+
+      if (existing) {
+        const hasAnchor = existing.anchorLat != null && existing.anchorLng != null;
+
+        if (!hasAnchor) {
+          // First time: initialize anchor at current position
+          stayStartTime = existing.stayStartTime || existing.updatedAt || now;
+        } else {
+          const dist = haversineDistance(existing.anchorLat, existing.anchorLng, latitude, longitude);
+
+          if (dist >= MOVE_THRESHOLD_METERS) {
+            // User has moved — create a family message
+            const dwellMs = now - (existing.stayStartTime || existing.updatedAt || now);
+            const durationText = formatDuration(dwellMs);
+
+            // Reverse geocode the old anchor position
+            const oldAddress = await reverseGeocode(existing.anchorLat, existing.anchorLng);
+            const content = `${user.nickname} 离开了 ${oldAddress}，已停留 ${durationText}`;
+
+            const msg = await FamilyMessage.create({
+              familyId: user.familyId,
+              userId: user._id,
+              nickname: user.nickname,
+              content,
+            });
+
+            // Push to all family members
+            io.to(roomId).emit('family:message', {
+              id: msg._id.toString(),
+              userId: user._id.toString(),
+              nickname: user.nickname,
+              content,
+              createdAt: msg.createdAt,
+            });
+
+            // New anchor = current position
+            newAnchorLat = latitude;
+            newAnchorLng = longitude;
+            stayStartTime = now;
+          } else {
+            // Still at same place — keep existing anchor and stayStartTime
+            newAnchorLat = existing.anchorLat;
+            newAnchorLng = existing.anchorLng;
+            stayStartTime = existing.stayStartTime || existing.updatedAt || now;
+          }
+        }
+      }
 
       const locationData = {
         userId: user._id,
@@ -65,7 +128,10 @@ module.exports = (io) => {
         heading: heading ?? 0,
         accuracy: accuracy ?? 0,
         address: address ?? '',
-        updatedAt: new Date(),
+        updatedAt: now,
+        anchorLat: newAnchorLat,
+        anchorLng: newAnchorLng,
+        stayStartTime,
       };
 
       await Location.findOneAndUpdate(
@@ -75,7 +141,6 @@ module.exports = (io) => {
       );
 
       // Broadcast to all family members (including sender to confirm)
-      const roomId = `family:${user.familyId}`;
       io.to(roomId).emit('location:updated', {
         userId: user._id.toString(),
         latitude,
@@ -84,7 +149,8 @@ module.exports = (io) => {
         heading: heading ?? 0,
         accuracy: accuracy ?? 0,
         address: address ?? '',
-        updatedAt: locationData.updatedAt,
+        updatedAt: now,
+        stayStartTime,
       });
     });
 

@@ -21,6 +21,7 @@ app.use(express.json());
 
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/family', require('./routes/family.routes'));
+app.use('/api/messages', require('./routes/message.routes'));
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 

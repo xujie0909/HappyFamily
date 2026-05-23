@@ -10,6 +10,10 @@ const locationSchema = new mongoose.Schema({
   accuracy: { type: Number, default: 0 },    // meters
   address: { type: String, default: '' },
   updatedAt: { type: Date, default: Date.now },
+  // Anchor: the position where the user last stopped moving (>100m threshold)
+  anchorLat: { type: Number, default: null },
+  anchorLng: { type: Number, default: null },
+  stayStartTime: { type: Date, default: null },
 }, { timestamps: false });
 
 locationSchema.index({ familyId: 1 });
